@@ -31,6 +31,8 @@
 #define DEFAULT_STACK_SIZE 8
 #define BYTES_PER_TERM (TERM_BITS / 8)
 
+static void context_monitors_handle_terminate(Context *ctx);
+
 Context *context_new(GlobalContext *glb)
 {
     Context *ctx = malloc(sizeof(Context));
@@ -78,6 +80,8 @@ Context *context_new(GlobalContext *glb)
 
     timer_wheel_item_init(&ctx->timer_wheel_head, NULL, 0);
 
+    list_init(&ctx->monitors_head);
+
     #ifdef ENABLE_ADVANCED_TRACE
         ctx->trace_calls = 0;
         ctx->trace_call_args = 0;
@@ -104,6 +108,8 @@ void context_destroy(Context *ctx)
     linkedlist_remove(&ctx->global->processes_table, &ctx->processes_table_head);
 
     dictionary_destroy(&ctx->dictionary);
+
+    context_monitors_handle_terminate(ctx);
 
     free(ctx->heap_start);
     free(ctx);
@@ -135,4 +141,64 @@ size_t context_size(Context *ctx)
     return sizeof(Context)
         + messages_size
         + context_memory_size(ctx) * BYTES_PER_TERM;
+}
+
+struct Monitor
+{
+    struct ListHead monitor_list_head;
+
+    term monitor_pid;
+    uint64_t ref_ticks;
+    bool linked : 1;
+};
+
+static void context_monitors_handle_terminate(Context *ctx)
+{
+    fprintf(stderr, "handle terminate\n");
+
+    struct ListHead *item;
+    struct ListHead *tmp;
+    MUTABLE_LIST_FOR_EACH(item, tmp, &ctx->monitors_head) {
+        struct Monitor *monitor = GET_LIST_ENTRY(item, struct Monitor, monitor_list_head);
+        if (monitor->linked) {
+            fprintf(stderr, "linked: %lx\n", monitor->monitor_pid);
+        } else {
+            fprintf(stderr, "monitor: %lx\n", monitor->monitor_pid);
+            if (memory_ensure_free(ctx, 20) != MEMORY_GC_OK) {
+                abort();
+            }
+
+            // TODO: move it out of heap
+            term ref = term_from_ref_ticks(monitor->ref_ticks, ctx);
+
+            term info_tuple = term_alloc_tuple(5, ctx);
+            term_put_tuple_element(info_tuple, 0, DOWN_ATOM);
+            term_put_tuple_element(info_tuple, 1, ref);
+            term_put_tuple_element(info_tuple, 2, PROCESS_ATOM);
+            term_put_tuple_element(info_tuple, 3, term_from_local_process_id(ctx->process_id));
+            term_put_tuple_element(info_tuple, 4, ctx->exit_reason);
+
+            int local_process_id = term_to_local_process_id(monitor->monitor_pid);
+            Context *target = globalcontext_get_process(ctx->global, local_process_id);
+            if (!IS_NULL_PTR(target)) {
+                mailbox_send(target, info_tuple);
+            }
+        }
+        free(monitor);
+    }
+
+    fprintf(stderr, "end of handle terminate\n");
+}
+
+uint64_t context_monitor(Context *ctx, term monitor_pid, bool linked)
+{
+    uint64_t ref_ticks = globalcontext_get_ref_ticks(ctx->global);
+
+    struct Monitor *monitor = (struct Monitor *) malloc(sizeof(struct Monitor));
+    monitor->monitor_pid = monitor_pid;
+    monitor->ref_ticks = ref_ticks;
+    monitor->linked = linked;
+    list_append(&ctx->monitors_head, &monitor->monitor_list_head);
+
+    return ref_ticks;
 }

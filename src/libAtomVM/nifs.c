@@ -114,6 +114,7 @@ static term nif_erlang_send_2(Context *ctx, int argc, term argv[]);
 static term nif_erlang_setelement_3(Context *ctx, int argc, term argv[]);
 static term nif_erlang_spawn(Context *ctx, int argc, term argv[]);
 static term nif_erlang_spawn_fun(Context *ctx, int argc, term argv[]);
+static term nif_erlang_spawn_link(Context *ctx, int argc, term argv[]);
 static term nif_erlang_whereis_1(Context *ctx, int argc, term argv[]);
 static term nif_erlang_system_time_1(Context *ctx, int argc, term argv[]);
 static term nif_erlang_tuple_to_list_1(Context *ctx, int argc, term argv[]);
@@ -359,6 +360,12 @@ static const struct Nif spawn_fun_opt_nif =
 {
     .base.type = NIFFunctionType,
     .nif_ptr = nif_erlang_spawn_fun
+};
+
+static const struct Nif spawn_link =
+{
+    .base.type = NIFFunctionType,
+    .nif_ptr = nif_erlang_spawn_link
 };
 
 static const struct Nif send_nif =
@@ -876,6 +883,8 @@ static term nif_erlang_spawn(Context *ctx, int argc, term argv[])
 
     term min_heap_size_term = interop_proplist_get_value(opts_term, MIN_HEAP_SIZE_ATOM);
     term max_heap_size_term = interop_proplist_get_value(opts_term, MAX_HEAP_SIZE_ATOM);
+    term link_term = interop_proplist_get_value(opts_term, LINK_ATOM);
+    term monitor_term = interop_proplist_get_value(opts_term, MONITOR_ATOM);
 
     if (min_heap_size_term != term_nil()) {
         if (UNLIKELY(!term_is_integer(min_heap_size_term))) {
@@ -902,6 +911,17 @@ static term nif_erlang_spawn(Context *ctx, int argc, term argv[])
         }
     }
 
+    uint64_t ref_ticks = 0;
+
+    if (link_term == TRUE_ATOM) {
+        fprintf(stderr, "link process\n");
+        ref_ticks = context_monitor(new_ctx, term_from_local_process_id(ctx->process_id), true);
+    }
+    if (monitor_term == TRUE_ATOM) {
+        fprintf(stderr, "monitor process\n");
+        ref_ticks = context_monitor(new_ctx, term_from_local_process_id(ctx->process_id), false);
+    }
+
     //TODO: check available registers count
     int reg_index = 0;
     term t = argv[2];
@@ -921,8 +941,37 @@ static term nif_erlang_spawn(Context *ctx, int argc, term argv[])
         }
     }
 
-    return term_from_local_process_id(new_ctx->process_id);
+    term new_pid = term_from_local_process_id(new_ctx->process_id);
+
+    if (ref_ticks) {
+        if (UNLIKELY(memory_ensure_free(ctx, 20) != MEMORY_GC_OK)) {
+            //TODO: new process should be terminated, however a new pid is returned anyway
+            fprintf(stderr, "Unable to allocate sufficient memory to spawn process.\n");
+            abort();
+        }
+
+        term ref = term_from_ref_ticks(ref_ticks, ctx);
+
+        term pid_ref_tuple = term_alloc_tuple(2, ctx);
+        term_put_tuple_element(pid_ref_tuple, 0, new_pid);
+        term_put_tuple_element(pid_ref_tuple, 1, ref);
+
+        return pid_ref_tuple;
+    } else {
+        return new_pid;
+    }
 }
+
+static term nif_erlang_spawn_link(Context *ctx, int argc, term argv[])
+{
+    return OK_ATOM;
+}
+
+static term nif_erlang_spawn_monitor(Context *ctx, int argc, term argv[])
+{
+    return OK_ATOM;
+}
+
 static term nif_erlang_send_2(Context *ctx, int argc, term argv[])
 {
     UNUSED(argc);

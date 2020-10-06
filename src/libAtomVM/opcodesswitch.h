@@ -624,6 +624,8 @@ COLD_FUNC static void dump(Context *ctx)
         term_display(stderr, msg->message, ctx);
         fprintf(stderr, "\n");
     }
+
+    fprintf(stderr, "\n\n**End Of Crash Report**\n");
 }
 
 static term maybe_alloc_boxed_integer_fragment(Context *ctx, avm_int64_t value)
@@ -1010,6 +1012,7 @@ static bool maybe_call_native(Context *ctx, AtomString module_name, AtomString f
             #endif
 
             #ifdef IMPL_EXECUTE_LOOP
+                ctx->exit_reason = NORMAL_ATOM;
                 goto terminate_context;
             #endif
             }
@@ -4593,6 +4596,8 @@ handle_error:
         }
 
         dump(ctx);
+
+        ctx->exit_reason = ERROR_ATOM;
 
 terminate_context:
         TRACE("-- Code execution finished for %i--\n", ctx->process_id);
