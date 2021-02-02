@@ -422,6 +422,8 @@ struct Test tests[] =
 
     {"alisp.beam", 42},
 
+    {"spawn_opt_monitor_normal.beam", 1},
+
     //TEST CRASHES HERE: {"memlimit.beam", 0},
 
     {NULL, 0}
