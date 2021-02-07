@@ -383,6 +383,7 @@ compile_erlang(sexp_parser)
 compile_erlang(sexp_lexer)
 
 compile_erlang(spawn_opt_monitor_normal)
+compile_erlang(spawn_opt_link_normal)
 
 add_custom_target(erlang_test_modules DEPENDS
     add.beam
@@ -760,4 +761,5 @@ add_custom_target(erlang_test_modules DEPENDS
     sexp_lexer.beam
 
     spawn_opt_monitor_normal.beam
+    spawn_opt_link_normal.beam
 )
