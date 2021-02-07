@@ -4604,12 +4604,13 @@ terminate_context:
         if (ctx->leader) {
             return 0;
         }
-        Context *scheduled_context = scheduler_wait(ctx->global, ctx);
+        GlobalContext *global = ctx->global;
+        scheduler_terminate(ctx);
+        Context *scheduled_context = scheduler_do_wait(global);
         if (UNLIKELY(scheduled_context == ctx)) {
             fprintf(stderr, "bug: scheduled a terminated process!\n");
             return 0;
         }
-        scheduler_terminate(ctx);
 
         ctx = scheduled_context;
         x_regs = ctx->x;

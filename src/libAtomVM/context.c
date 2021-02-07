@@ -100,6 +100,8 @@ Context *context_new(GlobalContext *glb)
     ctx->bs = term_invalid_term();
     ctx->bs_offset = 0;
 
+    ctx->exit_reason = NORMAL_ATOM;
+
     return ctx;
 }
 
@@ -149,21 +151,25 @@ struct Monitor
 
     term monitor_pid;
     uint64_t ref_ticks;
+
+    // this might be replaced with a handler function, this might be useful as a replacement
+    // to leader process field or for any other purposes.
     bool linked : 1;
 };
 
 static void context_monitors_handle_terminate(Context *ctx)
 {
-    fprintf(stderr, "handle terminate\n");
-
     struct ListHead *item;
     struct ListHead *tmp;
     MUTABLE_LIST_FOR_EACH(item, tmp, &ctx->monitors_head) {
         struct Monitor *monitor = GET_LIST_ENTRY(item, struct Monitor, monitor_list_head);
         if (monitor->linked) {
-            fprintf(stderr, "linked: %lx\n", monitor->monitor_pid);
+            int local_process_id = term_to_local_process_id(monitor->monitor_pid);
+            Context *target = globalcontext_get_process(ctx->global, local_process_id);
+            // TODO: this cannot work on multicore systems
+            // target context should be marked as killed and terminated during next scheduling
+            scheduler_terminate(target);
         } else {
-            fprintf(stderr, "monitor: %lx\n", monitor->monitor_pid);
             if (memory_ensure_free(ctx, 20) != MEMORY_GC_OK) {
                 abort();
             }
@@ -186,8 +192,6 @@ static void context_monitors_handle_terminate(Context *ctx)
         }
         free(monitor);
     }
-
-    fprintf(stderr, "end of handle terminate\n");
 }
 
 uint64_t context_monitor(Context *ctx, term monitor_pid, bool linked)

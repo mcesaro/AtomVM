@@ -914,11 +914,9 @@ static term nif_erlang_spawn(Context *ctx, int argc, term argv[])
     uint64_t ref_ticks = 0;
 
     if (link_term == TRUE_ATOM) {
-        fprintf(stderr, "link process\n");
-        ref_ticks = context_monitor(new_ctx, term_from_local_process_id(ctx->process_id), true);
+        context_monitor(new_ctx, term_from_local_process_id(ctx->process_id), true);
     }
     if (monitor_term == TRUE_ATOM) {
-        fprintf(stderr, "monitor process\n");
         ref_ticks = context_monitor(new_ctx, term_from_local_process_id(ctx->process_id), false);
     }
 
